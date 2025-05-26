@@ -8,12 +8,13 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
 
 app.use(express.static('public'));
+app.use(require('cors')());
 
 app.get('/api/search', async (req, res) => {
   const { q } = req.query;
   try {
     const search = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-      params: { key: API_KEY, part: 'snippet', q, maxResults: 5, type: 'video' }
+      params: { key: API_KEY, part: 'snippet', q, maxResults: 6, type: 'video' }
     });
 
     const videoIds = search.data.items.map(i => i.id.videoId).join(',');
@@ -31,31 +32,33 @@ app.get('/api/search', async (req, res) => {
     }));
 
     res.json(videos);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Search failed' });
   }
 });
 
 app.get('/api/formats', async (req, res) => {
-  const { url } = req.query;
   try {
-    const info = await ytdl.getInfo(url);
-    const video = ytdl.filterFormats(info.formats, 'videoandaudio').filter(f => f.qualityLabel);
-    const audio = ytdl.filterFormats(info.formats, 'audioonly');
+    const info = await ytdl.getInfo(req.query.url);
+    const videoFormats = ytdl.filterFormats(info.formats, 'videoandaudio')
+      .filter(f => f.qualityLabel && f.hasAudio && f.hasVideo);
+    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
 
-    res.json({ title: info.videoDetails.title, video, audio });
+    res.json({ title: info.videoDetails.title, video: videoFormats, audio: audioFormats });
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch formats' });
+    res.status(500).json({ error: 'Invalid or restricted URL' });
   }
 });
 
-app.get('/api/download', (req, res) => {
+app.get('/api/download', async (req, res) => {
   const { url, itag } = req.query;
   try {
-    res.header('Content-Disposition', 'attachment');
+    const info = await ytdl.getInfo(url);
+    const format = ytdl.chooseFormat(info.formats, { quality: itag });
+    res.setHeader('Content-Disposition', `attachment; filename="${info.videoDetails.title}.mp4"`);
     ytdl(url, { quality: itag }).pipe(res);
   } catch {
-    res.status(500).json({ error: 'Download failed' });
+    res.status(410).json({ error: "Download failed", message: "Status code: 410" });
   }
 });
 
