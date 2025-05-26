@@ -2,42 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>YouTube Search & Download</title>
+  <title>YouTube Video Playlists</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    input, button { padding: 10px; margin: 5px; }
-    .video { margin: 10px 0; }
-    .video img { width: 120px; vertical-align: middle; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+    h2 { margin-top: 30px; }
+    .section { margin-bottom: 40px; }
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 15px;
+    }
+    .video-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+      overflow: hidden;
+      text-align: center;
+    }
+    .video-card img {
+      width: 100%;
+    }
+    .video-card h4 {
+      font-size: 14px;
+      margin: 10px;
+    }
+    .video-card a {
+      display: inline-block;
+      margin-bottom: 10px;
+      background: #ff0000;
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
-  <h2>YouTube Video Search & Download</h2>
-  <input type="text" id="query" placeholder="Search YouTube...">
-  <button onclick="search()">Search</button>
-
-  <div id="results"></div>
+  <h1>YouTube Video Playlists</h1>
+  <div id="playlists"></div>
 
   <script>
-    async function search() {
-      const query = document.getElementById('query').value;
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      const results = document.getElementById('results');
-      results.innerHTML = '';
+    const sections = [
+      { title: "Trending Now", query: "trending videos" },
+      { title: "Music Hits", query: "music videos" },
+      { title: "Action Movies", query: "action movie trailer" },
+      { title: "Drama Picks", query: "drama scenes" },
+      { title: "Comedy Moments", query: "funny comedy skits" }
+    ];
 
-      data.forEach(video => {
-        const div = document.createElement('div');
-        div.className = 'video';
-        div.innerHTML = `
+    async function fetchPlaylist(title, query) {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const videos = await res.json();
+
+      const section = document.createElement('div');
+      section.className = 'section';
+      section.innerHTML = `<h2>${title}</h2><div class="video-grid"></div>`;
+      const grid = section.querySelector('.video-grid');
+
+      videos.forEach(video => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.innerHTML = `
           <img src="${video.thumbnail}">
-          <strong>${video.title}</strong><br>
-          <a href="/api/download?url=${encodeURIComponent(video.url)}" target="_blank">
-            Download
-          </a>
+          <h4>${video.title}</h4>
+          <a href="/api/download?url=${encodeURIComponent(video.url)}" target="_blank">Download</a>
         `;
-        results.appendChild(div);
+        grid.appendChild(card);
       });
+
+      document.getElementById('playlists').appendChild(section);
     }
+
+    // Load all playlists
+    sections.forEach(({ title, query }) => {
+      fetchPlaylist(title, query);
+    });
   </script>
 </body>
 </html>
