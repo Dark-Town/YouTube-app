@@ -5,12 +5,11 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 const YOUTUBE_API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
 
 app.use(express.static('public'));
 
-// Search endpoint
+// Search Endpoint
 app.get('/api/search', async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'Missing search query' });
@@ -35,24 +34,31 @@ app.get('/api/search', async (req, res) => {
 
     res.json(videos);
   } catch (err) {
-    res.status(500).json({ error: 'Search failed' });
+    console.error('Search error:', err.message);
+    res.status(500).json({ error: 'Search failed', message: err.message });
   }
 });
 
-// Download endpoint
+// Download Endpoint
 app.get('/api/download', async (req, res) => {
   const videoUrl = req.query.url;
   if (!videoUrl || !ytdl.validateURL(videoUrl)) {
-    return res.status(400).json({ error: 'Invalid URL' });
+    return res.status(400).json({ error: 'Invalid or missing YouTube URL' });
   }
 
   try {
     const info = await ytdl.getInfo(videoUrl);
-    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '');
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '').substring(0, 50);
+
     res.setHeader('Content-Disposition', `attachment; filename="${title}.mp4"`);
-    ytdl(videoUrl, { format: 'mp4' }).pipe(res);
+
+    ytdl(videoUrl, {
+      filter: format => format.container === 'mp4' && format.hasVideo && format.hasAudio,
+      quality: 'highest',
+    }).pipe(res);
   } catch (err) {
-    res.status(500).json({ error: 'Download failed' });
+    console.error('Download error:', err.message);
+    res.status(500).json({ error: 'Download failed', message: err.message });
   }
 });
 
