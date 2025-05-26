@@ -3,11 +3,11 @@
 <head>
   <title>YouTube Downloader</title>
   <style>
-    body { font-family: Arial; background: #121212; color: white; padding: 20px; }
+    body { background: #121212; color: #fff; font-family: Arial; padding: 20px; }
     input, button, select { padding: 8px; margin: 5px; }
     .video-list { display: flex; flex-wrap: wrap; gap: 20px; }
     .video-card {
-      background: #1f1f1f; border-radius: 8px; width: 320px;
+      background: #1e1e1e; border-radius: 10px; width: 320px;
       overflow: hidden; box-shadow: 0 0 5px #000;
     }
     .video-card img { width: 100%; }
@@ -18,8 +18,8 @@
 </head>
 <body>
 
-<h1>YouTube Downloader</h1>
-<input type="text" id="query" placeholder="Paste YouTube URL or search..." size="40">
+<h2>YouTube Downloader</h2>
+<input type="text" id="query" placeholder="Search or paste YouTube URL" size="40">
 <button onclick="handleSearch()">Search</button>
 
 <div id="videos" class="video-list"></div>
@@ -34,7 +34,7 @@ function handleSearch() {
   } else {
     fetch(`/api/search?q=${encodeURIComponent(query)}`)
       .then(res => res.json())
-      .then(renderResults);
+      .then(renderVideos);
   }
 }
 
@@ -42,51 +42,49 @@ function fetchFormats(url) {
   fetch(`/api/formats?url=${encodeURIComponent(url)}`)
     .then(res => res.json())
     .then(data => {
-      const videoOptions = data.video.map(v =>
-        `<option value="${v.itag}">${v.qualityLabel} (${Math.round(v.contentLength / 1024 / 1024) || '?'} MB)</option>`
+      const vOpts = data.video.map(f =>
+        `<option value="${f.itag}">${f.qualityLabel || 'Unknown'} (${Math.round((f.contentLength || 0)/1024/1024) || '?'} MB)</option>`
       ).join('');
 
-      const audioOptions = data.audio.map(v =>
-        `<option value="${v.itag}">Audio ${v.audioBitrate}kbps</option>`
+      const aOpts = data.audio.map(f =>
+        `<option value="${f.itag}">Audio ${f.audioBitrate}kbps</option>`
       ).join('');
 
       document.getElementById('videos').innerHTML = `
         <div class="video-card">
           <div class="video-info">
-            <strong>${data.title}</strong><br>
-            <div class="controls">
-              <label>Video Quality</label><br>
-              <select id="vformat">${videoOptions}</select>
-              <a id="vdownload" target="_blank"><button>Download Video</button></a><br><br>
+            <strong>${data.title}</strong><br><br>
+            <label>Video Quality</label><br>
+            <select id="vformat">${vOpts}</select>
+            <a id="vdl" target="_blank"><button>Download Video</button></a><br><br>
 
-              <label>Audio Quality</label><br>
-              <select id="aformat">${audioOptions}</select>
-              <a id="adownload" target="_blank"><button>Download Audio</button></a><br><br>
+            <label>Audio Only</label><br>
+            <select id="aformat">${aOpts}</select>
+            <a id="adl" target="_blank"><button>Download Audio</button></a><br><br>
 
-              <button onclick="playPreview('${url}')">Play Preview</button>
-            </div>
+            <button onclick="playPreview('${url}')">Play Preview</button>
           </div>
         </div>
       `;
 
-      const vSelect = document.getElementById('vformat');
-      const aSelect = document.getElementById('aformat');
-      const vBtn = document.getElementById('vdownload');
-      const aBtn = document.getElementById('adownload');
+      const vSel = document.getElementById('vformat');
+      const aSel = document.getElementById('aformat');
+      const vBtn = document.getElementById('vdl');
+      const aBtn = document.getElementById('adl');
 
       function updateLinks() {
-        vBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${vSelect.value}`;
-        aBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${aSelect.value}`;
+        vBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${vSel.value}`;
+        aBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${aSel.value}`;
       }
 
-      vSelect.onchange = updateLinks;
-      aSelect.onchange = updateLinks;
+      vSel.onchange = updateLinks;
+      aSel.onchange = updateLinks;
       updateLinks();
     })
-    .catch(() => alert("Invalid or restricted video URL"));
+    .catch(() => alert("Video not available or restricted"));
 }
 
-function renderResults(videos) {
+function renderVideos(videos) {
   const container = document.getElementById('videos');
   container.innerHTML = videos.map(v => `
     <div class="video-card">
@@ -104,13 +102,14 @@ function renderResults(videos) {
 
 function playPreview(url) {
   const id = new URL(url).searchParams.get("v") || url.split("v=")[1]?.split("&")[0];
-  const embed = `https://www.youtube.com/embed/${id}`;
-  window.open(embed, '_blank');
+  window.open(`https://www.youtube.com/embed/${id}`, '_blank');
 }
 
+// Auto-fetch trending
 window.onload = () => {
-  fetch('/api/search?q=trending').then(res => res.json()).then(renderResults);
+  fetch('/api/search').then(res => res.json()).then(renderVideos);
 };
 </script>
+
 </body>
 </html>
