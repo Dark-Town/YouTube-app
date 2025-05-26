@@ -2,82 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>YouTube Video Playlists</title>
+  <title>YouTube Player & Downloader</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-    h2 { margin-top: 30px; }
-    .section { margin-bottom: 40px; }
-    .video-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 15px;
-    }
-    .video-card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
-      overflow: hidden;
-      text-align: center;
-    }
-    .video-card img {
-      width: 100%;
-    }
-    .video-card h4 {
-      font-size: 14px;
-      margin: 10px;
-    }
-    .video-card a {
-      display: inline-block;
-      margin-bottom: 10px;
-      background: #ff0000;
-      color: white;
-      padding: 6px 10px;
-      border-radius: 4px;
-      text-decoration: none;
-      font-size: 13px;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button, select { padding: 10px; margin: 5px; }
+    #videoPlayer { margin-top: 20px; display: none; }
   </style>
 </head>
 <body>
-  <h1>YouTube Video Playlists</h1>
-  <div id="playlists"></div>
+  <h2>YouTube Video Downloader</h2>
+  <input type="text" id="videoInput" placeholder="Search or paste YouTube URL" size="50">
+  <button onclick="handleInput()">Fetch</button>
+
+  <div id="videoPlayer">
+    <h3 id="videoTitle"></h3>
+    <iframe id="ytPlayer" width="560" height="315" frameborder="0" allowfullscreen></iframe>
+
+    <div>
+      <label>Select quality:</label>
+      <select id="formatSelect"></select>
+      <button onclick="download()">Download</button>
+    </div>
+  </div>
 
   <script>
-    const sections = [
-      { title: "Trending Now", query: "trending videos" },
-      { title: "Music Hits", query: "music videos" },
-      { title: "Action Movies", query: "action movie trailer" },
-      { title: "Drama Picks", query: "drama scenes" },
-      { title: "Comedy Moments", query: "funny comedy skits" }
-    ];
+    let currentUrl = "";
 
-    async function fetchPlaylist(title, query) {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      const videos = await res.json();
+    async function handleInput() {
+      const input = document.getElementById('videoInput').value.trim();
+      if (!input) return alert("Enter a search term or YouTube URL.");
 
-      const section = document.createElement('div');
-      section.className = 'section';
-      section.innerHTML = `<h2>${title}</h2><div class="video-grid"></div>`;
-      const grid = section.querySelector('.video-grid');
+      // If it's a URL, use it directly
+      let url = input;
+      if (!input.startsWith("http")) {
+        // Perform search
+        const res = await fetch(`/api/search?q=${encodeURIComponent(input)}`);
+        const videos = await res.json();
+        if (!videos.length) return alert("No results.");
+        url = videos[0].url;
+      }
 
-      videos.forEach(video => {
-        const card = document.createElement('div');
-        card.className = 'video-card';
-        card.innerHTML = `
-          <img src="${video.thumbnail}">
-          <h4>${video.title}</h4>
-          <a href="/api/download?url=${encodeURIComponent(video.url)}" target="_blank">Download</a>
-        `;
-        grid.appendChild(card);
-      });
-
-      document.getElementById('playlists').appendChild(section);
+      currentUrl = url;
+      loadFormats(url);
     }
 
-    // Load all playlists
-    sections.forEach(({ title, query }) => {
-      fetchPlaylist(title, query);
-    });
+    async function loadFormats(url) {
+      const res = await fetch(`/api/formats?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+
+      if (!data.formats || !data.formats.length) {
+        return alert("No downloadable formats found.");
+      }
+
+      document.getElementById("videoPlayer").style.display = "block";
+      document.getElementById("videoTitle").innerText = data.title;
+      document.getElementById("ytPlayer").src = "https://www.youtube.com/embed/" + new URL(url).searchParams.get("v");
+
+      const select = document.getElementById("formatSelect");
+      select.innerHTML = "";
+      data.formats.forEach(f => {
+        const option = document.createElement("option");
+        option.value = f.itag;
+        option.innerText = `${f.quality} (${f.size})`;
+        select.appendChild(option);
+      });
+    }
+
+    function download() {
+      const itag = document.getElementById("formatSelect").value;
+      const url = `/api/download?url=${encodeURIComponent(currentUrl)}&itag=${itag}`;
+      window.open(url, "_blank");
+    }
   </script>
 </body>
 </html>
