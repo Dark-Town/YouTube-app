@@ -5,82 +5,86 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const YOUTUBE_API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
+const API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
 
 app.use(express.static('public'));
 
-// Search endpoint
-app.get('/api/search', async (req, res) => {
-  const q = req.query.q;
-  if (!q) return res.status(400).json({ error: 'Missing search query' });
-
+// Search videos by category
+app.get('/api/category', async (req, res) => {
+  const { q } = req.query;
   try {
-    const response = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+    const search = await axios.get('https://www.googleapis.com/youtube/v3/search', {
       params: {
-        key: YOUTUBE_API_KEY,
-        q,
+        key: API_KEY,
         part: 'snippet',
-        maxResults: 5,
-        type: 'video',
-      },
+        q,
+        maxResults: 3,
+        type: 'video'
+      }
     });
 
-    const videos = response.data.items.map(item => ({
-      title: item.snippet.title,
-      videoId: item.id.videoId,
-      thumbnail: item.snippet.thumbnails.medium.url,
+    const videoIds = search.data.items.map(v => v.id.videoId).join(',');
+    const stats = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+      params: {
+        key: API_KEY,
+        part: 'statistics,snippet',
+        id: videoIds
+      }
+    });
+
+    const data = stats.data.items.map(v => ({
+      videoId: v.id,
+      title: v.snippet.title,
+      thumbnail: v.snippet.thumbnails.medium.url,
+      views: v.statistics.viewCount,
+      likes: v.statistics.likeCount,
+      channel: v.snippet.channelTitle,
+      channelId: v.snippet.channelId
     }));
 
-    res.json(videos);
+    const subs = await axios.get('https://www.googleapis.com/youtube/v3/channels', {
+      params: {
+        key: API_KEY,
+        part: 'statistics',
+        id: data.map(d => d.channelId).join(',')
+      }
+    });
+
+    data.forEach((d, i) => {
+      d.subscribers = subs.data.items[i]?.statistics?.subscriberCount || 'N/A';
+    });
+
+    res.json(data);
   } catch (err) {
-    console.error('Search error:', err.message);
-    res.status(500).json({ error: 'Search failed', message: err.message });
+    console.error('Category fetch failed', err.message);
+    res.status(500).json({ error: 'Failed to fetch category videos' });
   }
 });
 
-// Get available formats
+// Get video formats
 app.get('/api/formats', async (req, res) => {
-  const url = req.query.url;
-  if (!ytdl.validateURL(url)) {
-    return res.status(400).json({ error: 'Invalid YouTube URL' });
-  }
-
+  const { url } = req.query;
   try {
     const info = await ytdl.getInfo(url);
-    const formats = ytdl.filterFormats(info.formats, 'videoandaudio')
+    const audio = ytdl.filterFormats(info.formats, 'audioonly')
+      .map(f => ({ itag: f.itag, type: 'Audio', bitrate: f.audioBitrate }));
+
+    const video = ytdl.filterFormats(info.formats, 'videoandaudio')
       .filter(f => f.container === 'mp4' && f.qualityLabel)
-      .map(f => ({
-        itag: f.itag,
-        quality: f.qualityLabel,
-        url: f.url,
-      }));
+      .map(f => ({ itag: f.itag, type: 'Video', quality: f.qualityLabel }));
 
-    res.json({ title: info.videoDetails.title, formats });
+    res.json({ title: info.videoDetails.title, audio, video });
   } catch (err) {
-    console.error('Format error:', err.message);
-    res.status(500).json({ error: 'Failed to get formats', message: err.message });
+    res.status(500).json({ error: 'Format error' });
   }
 });
 
-// Download selected quality
-app.get('/api/download', async (req, res) => {
+// Download
+app.get('/api/download', (req, res) => {
   const { url, itag } = req.query;
-  if (!ytdl.validateURL(url) || !itag) {
-    return res.status(400).json({ error: 'Missing or invalid parameters' });
-  }
-
-  try {
-    const info = await ytdl.getInfo(url);
-    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '').substring(0, 50);
-    res.setHeader('Content-Disposition', `attachment; filename="${title}.mp4"`);
-
-    ytdl(url, { quality: itag }).pipe(res);
-  } catch (err) {
-    console.error('Download error:', err.message);
-    res.status(500).json({ error: 'Download failed', message: err.message });
-  }
+  ytdl(url, { quality: itag })
+    .on('error', err => res.status(500).send('Download error'))
+    .pipe(res);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Running at http://localhost:${PORT}`));
