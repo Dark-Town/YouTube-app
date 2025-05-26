@@ -3,71 +3,90 @@
 <head>
   <title>YouTube Downloader</title>
   <style>
-    body { font-family: Arial; background: #222; color: #fff; margin: 0; padding: 20px; }
-    h1, h2 { color: #ffd700; }
+    body { font-family: Arial; background: #121212; color: white; padding: 20px; }
     input, button, select { padding: 8px; margin: 5px; }
     .video-list { display: flex; flex-wrap: wrap; gap: 20px; }
     .video-card {
-      background: #333; border-radius: 10px; overflow: hidden;
-      width: 300px; box-shadow: 0 0 5px #000;
+      background: #1f1f1f; border-radius: 8px; width: 320px;
+      overflow: hidden; box-shadow: 0 0 5px #000;
     }
     .video-card img { width: 100%; }
     .video-info { padding: 10px; }
-    .video-info small { color: #bbb; display: block; }
-    .download-options { margin-top: 10px; }
+    small { color: #aaa; display: block; }
+    .controls { margin-top: 10px; }
   </style>
 </head>
 <body>
 
-<h1>YouTube Video Downloader</h1>
-<input type="text" id="query" placeholder="Search or paste YouTube URL">
+<h1>YouTube Downloader</h1>
+<input type="text" id="query" placeholder="Paste YouTube URL or search..." size="40">
 <button onclick="handleSearch()">Search</button>
 
-<div class="video-list" id="videos"></div>
+<div id="videos" class="video-list"></div>
 
 <script>
 function handleSearch() {
   const query = document.getElementById('query').value;
-  const isUrl = query.includes('youtube.com') || query.includes('youtu.be');
+  const isUrl = query.includes("youtube.com") || query.includes("youtu.be");
 
   if (isUrl) {
-    displayUrl(query);
+    fetchFormats(query);
   } else {
     fetch(`/api/search?q=${encodeURIComponent(query)}`)
       .then(res => res.json())
-      .then(data => renderVideos(data));
+      .then(renderResults);
   }
 }
 
-function displayUrl(url) {
+function fetchFormats(url) {
   fetch(`/api/formats?url=${encodeURIComponent(url)}`)
     .then(res => res.json())
     .then(data => {
-      const container = document.getElementById('videos');
-      container.innerHTML = `
+      const videoOptions = data.video.map(v =>
+        `<option value="${v.itag}">${v.qualityLabel} (${Math.round(v.contentLength / 1024 / 1024) || '?'} MB)</option>`
+      ).join('');
+
+      const audioOptions = data.audio.map(v =>
+        `<option value="${v.itag}">Audio ${v.audioBitrate}kbps</option>`
+      ).join('');
+
+      document.getElementById('videos').innerHTML = `
         <div class="video-card">
           <div class="video-info">
-            <strong>${data.title}</strong>
-            <div class="download-options">
-              <select id="format">
-                ${data.video.map(v => `<option value="${v.itag}">${v.qualityLabel}</option>`).join('')}
-              </select>
-              <a href="/api/download?url=${encodeURIComponent(url)}&itag=" id="dlBtn" target="_blank">
-                <button>Download</button>
-              </a>
+            <strong>${data.title}</strong><br>
+            <div class="controls">
+              <label>Video Quality</label><br>
+              <select id="vformat">${videoOptions}</select>
+              <a id="vdownload" target="_blank"><button>Download Video</button></a><br><br>
+
+              <label>Audio Quality</label><br>
+              <select id="aformat">${audioOptions}</select>
+              <a id="adownload" target="_blank"><button>Download Audio</button></a><br><br>
+
+              <button onclick="playPreview('${url}')">Play Preview</button>
             </div>
           </div>
         </div>
       `;
-      const select = document.getElementById('format');
-      select.onchange = () => {
-        document.getElementById('dlBtn').href = `/api/download?url=${encodeURIComponent(url)}&itag=${select.value}`;
-      };
-      select.dispatchEvent(new Event('change'));
-    });
+
+      const vSelect = document.getElementById('vformat');
+      const aSelect = document.getElementById('aformat');
+      const vBtn = document.getElementById('vdownload');
+      const aBtn = document.getElementById('adownload');
+
+      function updateLinks() {
+        vBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${vSelect.value}`;
+        aBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${aSelect.value}`;
+      }
+
+      vSelect.onchange = updateLinks;
+      aSelect.onchange = updateLinks;
+      updateLinks();
+    })
+    .catch(() => alert("Invalid or restricted video URL"));
 }
 
-function renderVideos(videos) {
+function renderResults(videos) {
   const container = document.getElementById('videos');
   container.innerHTML = videos.map(v => `
     <div class="video-card">
@@ -77,16 +96,20 @@ function renderVideos(videos) {
         <small>${v.channel}</small>
         <small>Views: ${v.views}</small>
         <small>Likes: ${v.likes}</small>
-        <button onclick="displayUrl('https://www.youtube.com/watch?v=${v.id}')">Download</button>
+        <button onclick="fetchFormats('https://www.youtube.com/watch?v=${v.id}')">Download</button>
       </div>
     </div>
   `).join('');
 }
 
+function playPreview(url) {
+  const id = new URL(url).searchParams.get("v") || url.split("v=")[1]?.split("&")[0];
+  const embed = `https://www.youtube.com/embed/${id}`;
+  window.open(embed, '_blank');
+}
+
 window.onload = () => {
-  fetch('/api/search?q=trending')
-    .then(res => res.json())
-    .then(data => renderVideos(data));
+  fetch('/api/search?q=trending').then(res => res.json()).then(renderResults);
 };
 </script>
 </body>
