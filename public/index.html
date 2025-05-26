@@ -2,76 +2,95 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>YouTube Player & Downloader</title>
+  <title>YouTube Player + Downloader</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
+    body { font-family: Arial; padding: 20px; background: #f4f4f4; }
     input, button, select { padding: 10px; margin: 5px; }
-    #videoPlayer { margin-top: 20px; display: none; }
+    iframe { margin-top: 20px; width: 100%; max-width: 640px; height: 360px; }
+    .results img { width: 120px; }
+    .results div { margin: 10px 0; }
   </style>
 </head>
 <body>
-  <h2>YouTube Video Downloader</h2>
-  <input type="text" id="videoInput" placeholder="Search or paste YouTube URL" size="50">
-  <button onclick="handleInput()">Fetch</button>
+  <h1>YouTube Player + Downloader</h1>
 
-  <div id="videoPlayer">
-    <h3 id="videoTitle"></h3>
-    <iframe id="ytPlayer" width="560" height="315" frameborder="0" allowfullscreen></iframe>
+  <input type="text" id="input" placeholder="Search or paste URL" size="50">
+  <button onclick="handleSearch()">Go</button>
 
-    <div>
-      <label>Select quality:</label>
-      <select id="formatSelect"></select>
-      <button onclick="download()">Download</button>
-    </div>
-  </div>
+  <div id="video-container"></div>
+  <div id="formats"></div>
+  <div class="results"></div>
 
   <script>
-    let currentUrl = "";
+    async function handleSearch() {
+      const input = document.getElementById('input').value;
+      const resultsDiv = document.querySelector('.results');
+      const formatsDiv = document.getElementById('formats');
+      const videoDiv = document.getElementById('video-container');
+      resultsDiv.innerHTML = '';
+      formatsDiv.innerHTML = '';
+      videoDiv.innerHTML = '';
 
-    async function handleInput() {
-      const input = document.getElementById('videoInput').value.trim();
-      if (!input) return alert("Enter a search term or YouTube URL.");
-
-      // If it's a URL, use it directly
-      let url = input;
-      if (!input.startsWith("http")) {
-        // Perform search
+      if (input.includes('youtube.com/watch') || input.includes('youtu.be/')) {
+        const url = input;
+        const videoId = extractVideoID(url);
+        if (videoId) {
+          showPlayer(videoId);
+          showFormats(url);
+        }
+      } else {
         const res = await fetch(`/api/search?q=${encodeURIComponent(input)}`);
-        const videos = await res.json();
-        if (!videos.length) return alert("No results.");
-        url = videos[0].url;
-      }
+        const data = await res.json();
 
-      currentUrl = url;
-      loadFormats(url);
+        data.forEach(video => {
+          const div = document.createElement('div');
+          div.innerHTML = `
+            <img src="${video.thumbnail}"> <strong>${video.title}</strong><br>
+            <button onclick="selectVideo('${video.videoId}')">Play</button>
+          `;
+          resultsDiv.appendChild(div);
+        });
+      }
     }
 
-    async function loadFormats(url) {
+    function extractVideoID(url) {
+      const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+      return match ? match[1] : null;
+    }
+
+    function selectVideo(videoId) {
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      document.getElementById('input').value = url;
+      showPlayer(videoId);
+      showFormats(url);
+    }
+
+    function showPlayer(videoId) {
+      document.getElementById('video-container').innerHTML = `
+        <iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>
+      `;
+    }
+
+    async function showFormats(url) {
       const res = await fetch(`/api/formats?url=${encodeURIComponent(url)}`);
       const data = await res.json();
+      const formatsDiv = document.getElementById('formats');
 
-      if (!data.formats || !data.formats.length) {
-        return alert("No downloadable formats found.");
+      if (!data.formats.length) {
+        formatsDiv.innerHTML = "<p>No downloadable formats found.</p>";
+        return;
       }
 
-      document.getElementById("videoPlayer").style.display = "block";
-      document.getElementById("videoTitle").innerText = data.title;
-      document.getElementById("ytPlayer").src = "https://www.youtube.com/embed/" + new URL(url).searchParams.get("v");
-
-      const select = document.getElementById("formatSelect");
-      select.innerHTML = "";
+      formatsDiv.innerHTML = `<h3>Download "${data.title}"</h3>`;
       data.formats.forEach(f => {
-        const option = document.createElement("option");
-        option.value = f.itag;
-        option.innerText = `${f.quality} (${f.size})`;
-        select.appendChild(option);
+        const link = document.createElement('a');
+        link.href = `/api/download?url=${encodeURIComponent(url)}&itag=${f.itag}`;
+        link.textContent = `Download ${f.quality}`;
+        link.style.marginRight = '10px';
+        link.style.display = 'inline-block';
+        link.target = '_blank';
+        formatsDiv.appendChild(link);
       });
-    }
-
-    function download() {
-      const itag = document.getElementById("formatSelect").value;
-      const url = `/api/download?url=${encodeURIComponent(currentUrl)}&itag=${itag}`;
-      window.open(url, "_blank");
     }
   </script>
 </body>
