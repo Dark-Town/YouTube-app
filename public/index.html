@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Search & Download</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { padding: 10px; margin: 5px; }
+    .video { margin: 10px 0; }
+    .video img { width: 120px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <h2>YouTube Video Search & Download</h2>
+  <input type="text" id="query" placeholder="Search YouTube...">
+  <button onclick="search()">Search</button>
+
+  <div id="results"></div>
+
+  <script>
+    async function search() {
+      const query = document.getElementById('query').value;
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+
+      data.forEach(video => {
+        const div = document.createElement('div');
+        div.className = 'video';
+        div.innerHTML = `
+          <img src="${video.thumbnail}">
+          <strong>${video.title}</strong><br>
+          <a href="/api/download?url=${encodeURIComponent(video.url)}" target="_blank">
+            Download
+          </a>
+        `;
+        results.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
