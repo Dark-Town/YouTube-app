@@ -1,97 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>YouTube Player + Downloader</title>
+  <title>Auto YouTube Categories</title>
   <style>
-    body { font-family: Arial; padding: 20px; background: #f4f4f4; }
-    input, button, select { padding: 10px; margin: 5px; }
-    iframe { margin-top: 20px; width: 100%; max-width: 640px; height: 360px; }
-    .results img { width: 120px; }
-    .results div { margin: 10px 0; }
+    body { font-family: sans-serif; background: #f0f0f0; padding: 20px; }
+    h2 { margin-top: 40px; }
+    .category { display: flex; flex-wrap: wrap; gap: 20px; }
+    .video-card {
+      background: white;
+      width: 300px;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 5px #aaa;
+      padding-bottom: 10px;
+    }
+    .video-card img { width: 100%; }
+    .video-info { padding: 10px; }
+    .video-info small { display: block; color: gray; }
+    button { margin-top: 5px; padding: 5px 10px; }
+    select { margin-top: 5px; }
   </style>
 </head>
 <body>
-  <h1>YouTube Player + Downloader</h1>
 
-  <input type="text" id="input" placeholder="Search or paste URL" size="50">
-  <button onclick="handleSearch()">Go</button>
+<h1>Trending Videos by Category</h1>
 
-  <div id="video-container"></div>
-  <div id="formats"></div>
-  <div class="results"></div>
+<div id="music">
+  <h2>Music</h2>
+  <div class="category" id="music-videos"></div>
+</div>
 
-  <script>
-    async function handleSearch() {
-      const input = document.getElementById('input').value;
-      const resultsDiv = document.querySelector('.results');
-      const formatsDiv = document.getElementById('formats');
-      const videoDiv = document.getElementById('video-container');
-      resultsDiv.innerHTML = '';
-      formatsDiv.innerHTML = '';
-      videoDiv.innerHTML = '';
+<div id="action">
+  <h2>Action</h2>
+  <div class="category" id="action-videos"></div>
+</div>
 
-      if (input.includes('youtube.com/watch') || input.includes('youtu.be/')) {
-        const url = input;
-        const videoId = extractVideoID(url);
-        if (videoId) {
-          showPlayer(videoId);
-          showFormats(url);
-        }
-      } else {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(input)}`);
-        const data = await res.json();
+<div id="drama">
+  <h2>Drama</h2>
+  <div class="category" id="drama-videos"></div>
+</div>
 
-        data.forEach(video => {
-          const div = document.createElement('div');
-          div.innerHTML = `
-            <img src="${video.thumbnail}"> <strong>${video.title}</strong><br>
-            <button onclick="selectVideo('${video.videoId}')">Play</button>
-          `;
-          resultsDiv.appendChild(div);
-        });
-      }
-    }
+<script>
+const categories = ['music', 'action', 'drama'];
 
-    function extractVideoID(url) {
-      const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-      return match ? match[1] : null;
-    }
-
-    function selectVideo(videoId) {
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      document.getElementById('input').value = url;
-      showPlayer(videoId);
-      showFormats(url);
-    }
-
-    function showPlayer(videoId) {
-      document.getElementById('video-container').innerHTML = `
-        <iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>
-      `;
-    }
-
-    async function showFormats(url) {
-      const res = await fetch(`/api/formats?url=${encodeURIComponent(url)}`);
-      const data = await res.json();
-      const formatsDiv = document.getElementById('formats');
-
-      if (!data.formats.length) {
-        formatsDiv.innerHTML = "<p>No downloadable formats found.</p>";
-        return;
-      }
-
-      formatsDiv.innerHTML = `<h3>Download "${data.title}"</h3>`;
-      data.formats.forEach(f => {
-        const link = document.createElement('a');
-        link.href = `/api/download?url=${encodeURIComponent(url)}&itag=${f.itag}`;
-        link.textContent = `Download ${f.quality}`;
-        link.style.marginRight = '10px';
-        link.style.display = 'inline-block';
-        link.target = '_blank';
-        formatsDiv.appendChild(link);
+categories.forEach(cat => {
+  fetch(`/api/category?q=${cat}`)
+    .then(res => res.json())
+    .then(videos => {
+      const container = document.getElementById(`${cat}-videos`);
+      videos.forEach(v => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.innerHTML = `
+          <img src="${v.thumbnail}">
+          <div class="video-info">
+            <strong>${v.title}</strong>
+            <small>Channel: ${v.channel}</small>
+            <small>Views: ${v.views}</small>
+            <small>Likes: ${v.likes}</small>
+            <small>Subscribers: ${v.subscribers}</small>
+            <button onclick="loadFormats('${v.videoId}')">Download</button>
+            <div id="formats-${v.videoId}"></div>
+          </div>
+        `;
+        container.appendChild(card);
       });
-    }
-  </script>
+    });
+});
+
+function loadFormats(videoId) {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  fetch(`/api/formats?url=${encodeURIComponent(url)}`)
+    .then(res => res.json())
+    .then(data => {
+      const div = document.getElementById(`formats-${videoId}`);
+      div.innerHTML = `
+        <label>Download type:</label>
+        <select id="type-${videoId}" onchange="renderOptions('${videoId}', '${url}', this.value)">
+          <option value="Video">Video</option>
+          <option value="Audio">Audio</option>
+        </select>
+        <div id="options-${videoId}"></div>
+      `;
+      div.dataset.audio = JSON.stringify(data.audio);
+      div.dataset.video = JSON.stringify(data.video);
+      renderOptions(videoId, url, 'Video');
+    });
+}
+
+function renderOptions(videoId, url, type) {
+  const div = document.getElementById(`formats-${videoId}`);
+  const formats = JSON.parse(div.dataset[type.toLowerCase()]);
+  const optionsDiv = document.getElementById(`options-${videoId}`);
+  optionsDiv.innerHTML = formats.map(f => {
+    const label = f.type === 'Audio' ? `${f.bitrate}kbps` : f.quality;
+    return `<a href="/api/download?url=${encodeURIComponent(url)}&itag=${f.itag}" target="_blank">Download ${label}</a>`;
+  }).join('<br>');
+}
+</script>
 </body>
 </html>
