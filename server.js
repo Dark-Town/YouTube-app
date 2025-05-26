@@ -2,14 +2,14 @@ const express = require('express');
 const axios = require('axios');
 const ytdl = require('ytdl-core');
 const path = require('path');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 const YOUTUBE_API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
 
 app.use(express.static('public'));
 
-// Search Endpoint
+// Search endpoint
 app.get('/api/search', async (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: 'Missing search query' });
@@ -29,7 +29,6 @@ app.get('/api/search', async (req, res) => {
       title: item.snippet.title,
       videoId: item.id.videoId,
       thumbnail: item.snippet.thumbnails.medium.url,
-      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
     }));
 
     res.json(videos);
@@ -39,23 +38,43 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// Download Endpoint
-app.get('/api/download', async (req, res) => {
-  const videoUrl = req.query.url;
-  if (!videoUrl || !ytdl.validateURL(videoUrl)) {
-    return res.status(400).json({ error: 'Invalid or missing YouTube URL' });
+// Get available formats
+app.get('/api/formats', async (req, res) => {
+  const url = req.query.url;
+  if (!ytdl.validateURL(url)) {
+    return res.status(400).json({ error: 'Invalid YouTube URL' });
   }
 
   try {
-    const info = await ytdl.getInfo(videoUrl);
-    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '').substring(0, 50);
+    const info = await ytdl.getInfo(url);
+    const formats = ytdl.filterFormats(info.formats, 'videoandaudio')
+      .filter(f => f.container === 'mp4' && f.qualityLabel)
+      .map(f => ({
+        itag: f.itag,
+        quality: f.qualityLabel,
+        url: f.url,
+      }));
 
+    res.json({ title: info.videoDetails.title, formats });
+  } catch (err) {
+    console.error('Format error:', err.message);
+    res.status(500).json({ error: 'Failed to get formats', message: err.message });
+  }
+});
+
+// Download selected quality
+app.get('/api/download', async (req, res) => {
+  const { url, itag } = req.query;
+  if (!ytdl.validateURL(url) || !itag) {
+    return res.status(400).json({ error: 'Missing or invalid parameters' });
+  }
+
+  try {
+    const info = await ytdl.getInfo(url);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '').substring(0, 50);
     res.setHeader('Content-Disposition', `attachment; filename="${title}.mp4"`);
 
-    ytdl(videoUrl, {
-      filter: format => format.container === 'mp4' && format.hasVideo && format.hasAudio,
-      quality: 'highest',
-    }).pipe(res);
+    ytdl(url, { quality: itag }).pipe(res);
   } catch (err) {
     console.error('Download error:', err.message);
     res.status(500).json({ error: 'Download failed', message: err.message });
