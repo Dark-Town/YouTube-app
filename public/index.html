@@ -4,7 +4,7 @@
   <title>YouTube Downloader</title>
   <style>
     body { background: #121212; color: #fff; font-family: Arial; padding: 20px; }
-    input, button, select { padding: 8px; margin: 5px; }
+    input, button { padding: 8px; margin: 5px; }
     .video-list { display: flex; flex-wrap: wrap; gap: 20px; }
     .video-card {
       background: #1e1e1e; border-radius: 10px; width: 320px;
@@ -13,101 +13,94 @@
     .video-card img { width: 100%; }
     .video-info { padding: 10px; }
     small { color: #aaa; display: block; }
-    .controls { margin-top: 10px; }
   </style>
 </head>
 <body>
 
 <h2>YouTube Downloader</h2>
-<input type="text" id="query" placeholder="Search or paste YouTube URL" size="40">
+<input type="text" id="query" placeholder="Search or paste YouTube URL" size="50">
 <button onclick="handleSearch()">Search</button>
 
 <div id="videos" class="video-list"></div>
 
 <script>
+const API_KEY = 'AIzaSyAcFTJAfZM23_bxQwVtCyMUkbCeM8jFWhQ';
+
 function handleSearch() {
-  const query = document.getElementById('query').value;
+  const query = document.getElementById('query').value.trim();
   const isUrl = query.includes("youtube.com") || query.includes("youtu.be");
 
   if (isUrl) {
-    fetchFormats(query);
+    const videoId = extractVideoId(query);
+    renderDownloadCard(videoId);
   } else {
-    fetch(`/api/search?q=${encodeURIComponent(query)}`)
+    fetch(`https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=8`)
       .then(res => res.json())
-      .then(renderVideos);
+      .then(data => {
+        const videoIds = data.items.map(i => i.id.videoId).join(",");
+        return fetch(`https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=snippet,statistics`);
+      })
+      .then(res => res.json())
+      .then(data => {
+        const container = document.getElementById('videos');
+        container.innerHTML = data.items.map(video => {
+          const url = `https://youtube.com/watch?v=${video.id}`;
+          const thumb = video.snippet.thumbnails.medium.url;
+          return `
+            <div class="video-card">
+              <img src="${thumb}">
+              <div class="video-info">
+                <strong>${video.snippet.title}</strong>
+                <small>${video.snippet.channelTitle}</small>
+                <small>Views: ${video.statistics.viewCount}</small>
+                <small>Likes: ${video.statistics.likeCount}</small>
+                <button onclick="downloadVideo('${url}')">Download Video</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      })
+      .catch(() => alert("Search failed"));
   }
 }
 
-function fetchFormats(url) {
-  fetch(`/api/formats?url=${encodeURIComponent(url)}`)
-    .then(res => res.json())
-    .then(data => {
-      const vOpts = data.video.map(f =>
-        `<option value="${f.itag}">${f.qualityLabel || 'Unknown'} (${Math.round((f.contentLength || 0)/1024/1024) || '?'} MB)</option>`
-      ).join('');
-
-      const aOpts = data.audio.map(f =>
-        `<option value="${f.itag}">Audio ${f.audioBitrate}kbps</option>`
-      ).join('');
-
-      document.getElementById('videos').innerHTML = `
-        <div class="video-card">
-          <div class="video-info">
-            <strong>${data.title}</strong><br><br>
-            <label>Video Quality</label><br>
-            <select id="vformat">${vOpts}</select>
-            <a id="vdl" target="_blank"><button>Download Video</button></a><br><br>
-
-            <label>Audio Only</label><br>
-            <select id="aformat">${aOpts}</select>
-            <a id="adl" target="_blank"><button>Download Audio</button></a><br><br>
-
-            <button onclick="playPreview('${url}')">Play Preview</button>
-          </div>
-        </div>
-      `;
-
-      const vSel = document.getElementById('vformat');
-      const aSel = document.getElementById('aformat');
-      const vBtn = document.getElementById('vdl');
-      const aBtn = document.getElementById('adl');
-
-      function updateLinks() {
-        vBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${vSel.value}`;
-        aBtn.href = `/api/download?url=${encodeURIComponent(url)}&itag=${aSel.value}`;
-      }
-
-      vSel.onchange = updateLinks;
-      aSel.onchange = updateLinks;
-      updateLinks();
-    })
-    .catch(() => alert("Video not available or restricted"));
+function extractVideoId(url) {
+  try {
+    const u = new URL(url);
+    return u.searchParams.get("v") || url.split("v=")[1]?.split("&")[0];
+  } catch {
+    return url.split("v=")[1]?.split("&")[0] || url;
+  }
 }
 
-function renderVideos(videos) {
+function renderDownloadCard(videoId) {
+  const videoUrl = `https://youtube.com/watch?v=${videoId}`;
+  const thumbUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
   const container = document.getElementById('videos');
-  container.innerHTML = videos.map(v => `
+  container.innerHTML = `
     <div class="video-card">
-      <img src="${v.thumbnail}">
+      <img src="${thumbUrl}">
       <div class="video-info">
-        <strong>${v.title}</strong>
-        <small>${v.channel}</small>
-        <small>Views: ${v.views}</small>
-        <small>Likes: ${v.likes}</small>
-        <button onclick="fetchFormats('https://www.youtube.com/watch?v=${v.id}')">Download</button>
+        <strong>Download Video</strong><br><br>
+        <button onclick="downloadVideo('${videoUrl}')">Download from API</button>
+        <button onclick="window.open('${videoUrl}', '_blank')">Watch</button>
       </div>
     </div>
-  `).join('');
+  `;
 }
 
-function playPreview(url) {
-  const id = new URL(url).searchParams.get("v") || url.split("v=")[1]?.split("&")[0];
-  window.open(`https://www.youtube.com/embed/${id}`, '_blank');
+function downloadVideo(videoUrl) {
+  const downloadUrl = `https://apis.davidcyriltech.my.id/youtube/mp4?url=${encodeURIComponent(videoUrl)}`;
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = 'video.mp4';
+  a.target = '_blank';
+  a.click();
 }
 
-// Auto-fetch trending
+// Auto-load trending on page load
 window.onload = () => {
-  fetch('/api/search').then(res => res.json()).then(renderVideos);
+  handleSearch();
 };
 </script>
 
